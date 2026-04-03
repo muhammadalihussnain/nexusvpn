@@ -1,0 +1,36 @@
+# Build directories
+build/
+build-*/
+cmake-build-*/
+
+# IDE files
+.vscode/
+.idea/
+.claude/
+*.swp
+
+# Compiled files
+*.o
+*.exe
+*.so
+*.a
+
+# Test coverage
+coverage/
+*.gcda
+*.gcno
+*.gcov
+*.info
+
+# Logs
+*.log
+*.pcap
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Config with secrets
+config/local/
+*.key
+*.pem

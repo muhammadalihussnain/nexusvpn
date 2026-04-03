@@ -1,0 +1,71 @@
+name: CI Pipeline - Feature 1 TUN Interface
+
+on:
+  push:
+    branches: [ main, develop, feature/* ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-22.04
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install dependencies
+      run: |
+        sudo apt update
+        sudo apt install -y build-essential cmake libgtest-dev lcov
+        sudo modprobe tun
+        
+    - name: Configure
+      run: cmake -B build -DCMAKE_BUILD_TYPE=Debug -DBUILD_TESTS=ON
+      
+    - name: Build
+      run: cmake --build build -j $(nproc)
+      
+    - name: Run tests
+      working-directory: build
+      run: ctest --output-on-failure -j $(nproc)
+      
+  coverage:
+    runs-on: ubuntu-22.04
+    needs: build-and-test
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install dependencies
+      run: sudo apt install -y lcov gcovr
+      
+    - name: Build with coverage
+      run: |
+        mkdir -p build-coverage
+        cd build-coverage
+        cmake -DCMAKE_BUILD_TYPE=Debug -DENABLE_COVERAGE=ON -DBUILD_TESTS=ON ..
+        make -j$(nproc)
+        
+    - name: Run tests with coverage
+      working-directory: build-coverage
+      run: |
+        ctest -j$(nproc)
+        lcov --capture --directory . --output-file coverage.info --no-external
+        lcov --remove coverage.info '/usr/*' '*/tests/*' --output-file coverage_filtered.info
+        
+    - name: Check coverage threshold
+      working-directory: build-coverage
+      run: |
+        COVERAGE=$(lcov --summary coverage_filtered.info 2>&1 | grep lines | awk '{print $2}' | sed 's/%//')
+        echo "Coverage: ${COVERAGE}%"
+        if (( $(echo "$COVERAGE < 90" | bc -l) )); then
+          echo "❌ Coverage ${COVERAGE}% is below 90%"
+          exit 1
+        fi
+        echo "✅ Coverage ${COVERAGE}% passes threshold"
+        
+    - name: Upload coverage
+      uses: actions/upload-artifact@v4
+      with:
+        name: coverage-report
+        path: build-coverage/coverage_filtered.info
