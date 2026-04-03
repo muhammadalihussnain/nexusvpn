@@ -1,3 +1,4 @@
+cat > README.md << 'EOF'
 # NexusVPN
 
 ## Feature 1: TUN Virtual Interface (Layer 3 IP Tunneling)
@@ -21,8 +22,4 @@ python3 web/dashboard/server.py
 # Open http://localhost:5000
 
 ### File 4: `LICENSE` (GPLv2 for OpenVPN compatibility)
-```bash
-cat > LICENSE << 'EOF'
-                    GNU GENERAL PUBLIC LICENSE
-                       Version 2, June 1991
-... (full GPLv2 text from gnu.org)
+```
