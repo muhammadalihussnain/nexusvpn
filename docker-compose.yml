@@ -1,0 +1,73 @@
+version: '3.8'
+
+services:
+  # VPN Server container
+  vpn-server:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    container_name: vpn-server
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    networks:
+      vpn_network:
+        ipv4_address: 192.168.99.10
+    command: >
+      sh -c "cd /app/build && 
+             ./nexusvpn --server --port 1194 --ip 10.0.0.1/24"
+    restart: unless-stopped
+
+  # VPN Client container
+  vpn-client:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    container_name: vpn-client
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    networks:
+      vpn_network:
+        ipv4_address: 192.168.99.20
+    depends_on:
+      - vpn-server
+    command: >
+      sh -c "sleep 5 &&
+             cd /app/build && 
+             ./nexusvpn --client --host 192.168.99.10 --port 1194 --ip 10.0.0.2/24"
+    restart: unless-stopped
+
+  # Test container for verification
+  vpn-tester:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    container_name: vpn-tester
+    cap_add:
+      - NET_ADMIN
+    networks:
+      vpn_network:
+        ipv4_address: 192.168.99.30
+    depends_on:
+      - vpn-client
+    command: >
+      sh -c "sleep 10 &&
+             echo '=== Testing VPN Connectivity ===' &&
+             echo 'Pinging VPN server...' &&
+             ping -c 5 10.0.0.1 &&
+             echo '=== Test Complete ===' &&
+             tail -f /dev/null"
+    restart: unless-stopped
+
+networks:
+  vpn_network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 192.168.99.0/24
+          gateway: 192.168.99.1

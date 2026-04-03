@@ -1,0 +1,30 @@
+FROM ubuntu:22.04
+
+# Install dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential cmake \
+    libgtest-dev \
+    iproute2 \
+    iptables \
+    net-tools \
+    iputils-ping \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create working directory
+WORKDIR /app
+
+# Copy source code
+COPY . .
+
+# Build the project
+RUN mkdir -p build && \
+    cd build && \
+    cmake -DBUILD_TESTS=ON .. && \
+    make -j$(nproc)
+
+# Enable TUN device capability
+RUN mkdir -p /dev/net && \
+    chmod 600 /dev/net/tun 2>/dev/null || true
+
+CMD ["/bin/bash"]

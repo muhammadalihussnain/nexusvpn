@@ -1,4 +1,5 @@
 #include "nexusvpn/core/tun_interface.hpp"
+#include "nexusvpn/core/constants.hpp"
 
 #include <sys/socket.h>
 #include <sys/ioctl.h>
@@ -56,20 +57,17 @@ TUNInterface& TUNInterface::operator=(TUNInterface&& other) noexcept {
 }
 
 void TUNInterface::createTUN() {
-    // Open the TUN clone device
     const char* tun_device = "/dev/net/tun";
     fd_ = open(tun_device, O_RDWR);
     if (fd_ < 0) {
         throw std::runtime_error("Failed to open /dev/net/tun. Run with sudo?");
     }
     
-    // Configure TUN device
     struct ifreq ifr;
-    memset(&ifr, 0, sizeof(ifr));
-    ifr.ifr_flags = IFF_TUN | IFF_NO_PI;  // TUN (Layer 3), no packet info
-    strncpy(ifr.ifr_name, name_.c_str(), IFNAMSIZ - 1);
+    std::memset(&ifr, 0, sizeof(ifr));
+    ifr.ifr_flags = IFF_TUN | IFF_NO_PI;
+    std::strncpy(ifr.ifr_name, name_.c_str(), IFNAMSIZ - 1);
     
-    // Create the interface via ioctl
     if (ioctl(fd_, TUNSETIFF, &ifr) < 0) {
         close(fd_);
         fd_ = -1;
@@ -85,12 +83,18 @@ std::vector<uint8_t> TUNInterface::readPacket() {
         throw std::runtime_error("TUN interface not open");
     }
     
-    std::vector<uint8_t> buffer(mtu_ + 128);
+    // Use buffer size from constants (MTU + IP header + UDP header + margin)
+    const size_t buffer_size = static_cast<size_t>(mtu_) + 
+                               IP_HEADER_MIN_SIZE + 
+                               UDP_HEADER_SIZE + 
+                               ETHERNET_HEADER_SIZE;
+    
+    std::vector<uint8_t> buffer(buffer_size);
     ssize_t n = read(fd_, buffer.data(), buffer.size());
     
     if (n < 0) {
         throw std::runtime_error("Failed to read from TUN: " + 
-                                 std::string(strerror(errno)));
+                                 std::string(std::strerror(errno)));
     }
     
     buffer.resize(static_cast<size_t>(n));
@@ -110,15 +114,14 @@ std::vector<uint8_t> TUNInterface::readPacketWithTimeout(int timeout_ms) {
     timeout.tv_sec = timeout_ms / 1000;
     timeout.tv_usec = (timeout_ms % 1000) * 1000;
     
-    int ret = select(fd_ + 1, &read_fds, nullptr, nullptr, 
-                     timeout_ms >= 0 ? &timeout : nullptr);
+    int ret = select(fd_ + 1, &read_fds, nullptr, nullptr, &timeout);
     
     if (ret < 0) {
-        throw std::runtime_error("select() failed: " + std::string(strerror(errno)));
+        throw std::runtime_error("select() failed: " + std::string(std::strerror(errno)));
     }
     
     if (ret == 0) {
-        return {};  // Timeout
+        return {};  // Timeout - return empty packet
     }
     
     return readPacket();
@@ -137,7 +140,7 @@ void TUNInterface::writePacket(const std::vector<uint8_t>& packet) {
     
     if (n < 0) {
         throw std::runtime_error("Failed to write to TUN: " + 
-                                 std::string(strerror(errno)));
+                                 std::string(std::strerror(errno)));
     }
     
     if (static_cast<size_t>(n) != packet.size()) {
@@ -180,31 +183,45 @@ void TUNInterface::setIPAddress(const std::string& cidr) {
 }
 
 void TUNInterface::bringUp() {
-    executeCommand("ip link set dev " + name_ + " up");
+    std::string cmd = "ip link set dev " + name_ + " up";
+    executeCommand(cmd);
     is_up_ = true;
     std::cout << "[TUN] Interface " << name_ << " is UP" << std::endl;
 }
 
 void TUNInterface::bringDown() {
-    executeCommand("ip link set dev " + name_ + " down");
+    std::string cmd = "ip link set dev " + name_ + " down";
+    executeCommand(cmd);
     is_up_ = false;
     std::cout << "[TUN] Interface " << name_ << " is DOWN" << std::endl;
 }
 
 void TUNInterface::addRoute(const std::string& network) {
-    executeCommand("ip route add " + network + " dev " + name_);
+    std::string cmd = "ip route add " + network + " dev " + name_;
+    executeCommand(cmd);
     std::cout << "[TUN] Added route: " << network << " via " << name_ << std::endl;
 }
 
 void TUNInterface::removeRoute(const std::string& network) {
-    executeCommand("ip route del " + network + " dev " + name_);
+    std::string cmd = "ip route del " + network + " dev " + name_;
+    executeCommand(cmd);
     std::cout << "[TUN] Removed route: " << network << std::endl;
 }
 
 void TUNInterface::executeCommand(const std::string& cmd) {
-    int result = system(cmd.c_str());
+    int result = std::system(cmd.c_str());
     if (result != 0) {
         std::cerr << "[TUN] Warning: Command failed (code " << result << "): " << cmd << std::endl;
+    }
+}
+
+void TUNInterface::setNonBlocking() {
+    int flags = fcntl(fd_, F_GETFL, 0);
+    if (flags < 0) {
+        throw std::runtime_error("Failed to get TUN fd flags");
+    }
+    if (fcntl(fd_, F_SETFL, flags | O_NONBLOCK) < 0) {
+        throw std::runtime_error("Failed to set TUN fd to non-blocking");
     }
 }
 

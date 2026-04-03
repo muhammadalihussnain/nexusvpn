@@ -1,5 +1,6 @@
 #pragma once
 
+#include "constants.hpp"
 #include <string>
 #include <vector>
 #include <cstdint>
@@ -13,51 +14,46 @@ namespace nexusvpn {
  * @brief TUN Virtual Interface - Layer 3 IP Tunneling
  * 
  * Implements a virtual network interface that operates at IP level.
- * The Linux kernel routes packets to this interface, and we read them
- * from userspace. This is the foundation of any VPN.
- * 
- * Reference: SP 800-77 Sec 2.2 - VPN Technologies
+ * Following RFC 894, RFC 1191, and C++ Core Guidelines.
  */
 class TUNInterface {
 public:
     /**
      * @brief Create a TUN interface
-     * @param name Interface name (e.g., "tun0", "vpn0")
-     * @param mtu Maximum Transmission Unit (default: 1500)
+     * @param name Interface name (e.g., "vpn0")
+     * @param mtu Maximum Transmission Unit (default: DEFAULT_MTU from RFC 894)
      * @throws std::runtime_error if TUN device cannot be created
      */
-    explicit TUNInterface(const std::string& name, int mtu = 1500);
+    explicit TUNInterface(const std::string& name, 
+                          int mtu = DEFAULT_MTU);
     
     ~TUNInterface();
     
-    // No copying (unique file descriptor)
     TUNInterface(const TUNInterface&) = delete;
     TUNInterface& operator=(const TUNInterface&) = delete;
     
-    // Move constructor
     TUNInterface(TUNInterface&& other) noexcept;
     TUNInterface& operator=(TUNInterface&& other) noexcept;
     
     /**
      * @brief Read a raw IP packet from the TUN interface
      * @return Vector containing the IP packet bytes
-     * @throws std::runtime_error on read failure
      */
     std::vector<uint8_t> readPacket();
     
     /**
      * @brief Write a raw IP packet to the TUN interface
      * @param packet The IP packet to inject into network stack
-     * @throws std::runtime_error on write failure
      */
     void writePacket(const std::vector<uint8_t>& packet);
     
     /**
      * @brief Read packet with timeout (non-blocking)
-     * @param timeout_ms Timeout in milliseconds (-1 for blocking)
+     * @param timeout_ms Timeout in milliseconds (default: NONBLOCKING_TIMEOUT_MS)
      * @return Packet bytes (empty if timeout)
      */
-    std::vector<uint8_t> readPacketWithTimeout(int timeout_ms);
+    std::vector<uint8_t> readPacketWithTimeout(
+        int timeout_ms = Timing::NONBLOCKING_TIMEOUT_MS);
     
     /**
      * @brief Start asynchronous packet reading
@@ -120,13 +116,14 @@ public:
 private:
     std::string name_;
     int mtu_;
-    int fd_;                    // File descriptor for /dev/net/tun
+    int fd_;
     bool is_up_;
     bool async_running_;
     std::unique_ptr<std::thread> async_thread_;
     
     void createTUN();
     void executeCommand(const std::string& cmd);
+    void setNonBlocking();
 };
 
 } // namespace nexusvpn
